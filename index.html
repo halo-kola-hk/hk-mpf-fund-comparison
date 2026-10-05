@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>強積金基金表現比較</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0f1117; --card-bg: #1a1d27; --card-border: #2a2e3a;
+            --text: #e4e6eb; --text-muted: #8b8f9a; --accent: #4f9eff;
+            --green: #00c853; --red: #ff3b30; --yellow: #ffcc00; --radius: 12px;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang HK', 'Microsoft JhengHei', sans-serif;
+            background: var(--bg); color: var(--text); min-height: 100vh; padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 24px; }
+        header h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+        header .subtitle { color: var(--text-muted); font-size: 14px; }
+        .controls { display: flex; justify-content: center; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+        .period-btn {
+            background: var(--card-bg); border: 1px solid var(--card-border);
+            color: var(--text-muted); padding: 8px 20px; border-radius: 8px;
+            cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s;
+        }
+        .period-btn:hover { border-color: var(--accent); color: var(--text); }
+        .period-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .chart-container {
+            background: var(--card-bg); border: 1px solid var(--card-border);
+            border-radius: var(--radius); padding: 24px; margin-bottom: 20px; position: relative;
+        }
+        .chart-container canvas { max-height: 500px; }
+        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .chart-header h2 { font-size: 18px; font-weight: 600; }
+        .chart-header .info { color: var(--text-muted); font-size: 12px; }
+        .search-box {
+            background: var(--card-bg); border: 1px solid var(--card-border);
+            border-radius: 8px; padding: 8px 16px; color: var(--text);
+            font-size: 14px; width: 250px;
+        }
+        .search-box:focus { outline: none; border-color: var(--accent); }
+        .ranking-list {
+            background: var(--card-bg); border: 1px solid var(--card-border);
+            border-radius: var(--radius); padding: 16px; margin-bottom: 20px;
+        }
+        .ranking-list h3 { font-size: 16px; margin-bottom: 12px; color: var(--text-muted); }
+        .ranking-item {
+            display: flex; align-items: center; padding: 10px 12px; border-radius: 8px;
+            cursor: pointer; transition: background 0.15s; border-left: 3px solid transparent;
+        }
+        .ranking-item:hover { background: rgba(79, 158, 255, 0.08); }
+        .ranking-item.highlighted { background: rgba(79, 158, 255, 0.12); border-left-color: var(--accent); }
+        .rank-number { width: 32px; text-align: center; font-weight: 700; font-size: 16px; color: var(--text-muted); }
+        .rank-number.top1 { color: var(--yellow); }
+        .rank-number.top2 { color: #c0c0c0; }
+        .rank-number.top3 { color: #cd7f32; }
+        .rank-info { flex: 1; margin-left: 12px; }
+        .rank-fund-name { font-size: 14px; font-weight: 500; }
+        .rank-scheme-name { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+        .rank-trustee { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+        .rank-value { font-size: 16px; font-weight: 700; text-align: right; min-width: 80px; }
+        .rank-value.positive { color: var(--green); }
+        .rank-value.negative { color: var(--red); }
+        .color-dot { width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; flex-shrink: 0; }
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6); z-index: 100; justify-content: center;
+            align-items: center; padding: 20px;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--card-bg); border: 1px solid var(--card-border);
+            border-radius: var(--radius); max-width: 720px; width: 100%;
+            max-height: 85vh; overflow-y: auto; padding: 28px;
+        }
+        .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+        .modal-header h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+        .modal-header .scheme { color: var(--text-muted); font-size: 14px; }
+        .modal-header .trustee { color: var(--accent); font-size: 13px; margin-top: 2px; }
+        .modal-close { background: none; border: none; color: var(--text-muted); font-size: 24px; cursor: pointer; padding: 0; line-height: 1; }
+        .modal-close:hover { color: var(--text); }
+        .modal-section { margin-bottom: 24px; }
+        .modal-section h3 { font-size: 14px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+        .perf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
+        .perf-card { background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border); border-radius: 8px; padding: 12px; text-align: center; }
+        .perf-card .label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+        .perf-card .value { font-size: 18px; font-weight: 700; }
+        .perf-card .value.positive { color: var(--green); }
+        .perf-card .value.negative { color: var(--red); }
+        .perf-card .value.na { color: var(--text-muted); }
+        .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--card-border); font-size: 14px; }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-row .label { color: var(--text-muted); }
+        .detail-row .value { font-weight: 500; }
+        .fee-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+        .fee-card { background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px 12px; }
+        .fee-card .label { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
+        .fee-card .value { font-size: 15px; font-weight: 600; }
+        .fee-card .value.zero { color: var(--text-muted); }
+        .data-source { text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 20px; padding: 12px; }
+        .data-source a { color: var(--accent); text-decoration: none; }
+        .loading { text-align: center; padding: 60px; color: var(--text-muted); }
+        .no-data { text-align: center; padding: 40px; color: var(--text-muted); }
+        @media (max-width: 768px) {
+            header h1 { font-size: 22px; }
+            .controls { gap: 6px; }
+            .period-btn { padding: 6px 14px; font-size: 13px; }
+            .chart-container { padding: 16px; }
+            .search-box { width: 100%; }
+            .perf-grid { grid-template-columns: repeat(2, 1fr); }
+            .fee-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>強積金基金表現比較</h1>
+            <p class="subtitle">按累積回報排名 Top 10 · 點擊折線圖查看詳細資料（費用、平台費等）</p>
+        </header>
+        <div class="controls">
+            <button class="period-btn active" data-period="1y">1年</button>
+            <button class="period-btn" data-period="5y">5年</button>
+            <button class="period-btn" data-period="10y">10年</button>
+            <button class="period-btn" data-period="since_launch">成立至今</button>
+        </div>
+        <div class="chart-container">
+            <div class="chart-header">
+                <h2 id="chart-title">累積回報 Top 10</h2>
+                <input type="text" class="search-box" id="search-box" placeholder="搜尋基金、計劃或受託人...">
+            </div>
+            <canvas id="lineChart"></canvas>
+        </div>
+        <div class="ranking-list">
+            <h3>排名列表</h3>
+            <div id="ranking-list"></div>
+        </div>
+        <div class="data-source">
+            資料來源：
+            <a href="https://mfp.mpfa.org.hk/tch/mpp_list.jsp" target="_blank">積金局強積金基金平台</a> ·
+            <a href="https://www.mpfa.org.hk/info-centre/public-registers/registered-mpf-schemes" target="_blank">註冊強積金計劃</a>
+            · 數據截至 2026年8月31日
+        </div>
+    </div>
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal" id="modal-content"></div>
+    </div>
+    <script>
+        let allFunds = [];
+        let chart = null;
+        let currentPeriod = '1y';
+        let searchQuery = '';
+        const COLORS = ['#4f9eff', '#00c853', '#ff3b30', '#ffcc00', '#9c27b0', '#00bcd4', '#ff6f00', '#8bc34a', '#e91e63', '#3f51b5'];
+        const PERIOD_LABELS = { '1y': '1年', '5y': '5年', '10y': '10年', 'since_launch': '成立至今' };
+        const FEE_LABELS = {
+            fund_management_fee: '基金管理費',
+            trustee_custodian_fee: '受託人費／保管人費',
+            empf_platform_fee: '積金易平台費',
+            member_service_fee: '成員服務費',
+            investment_management_fee: '投資管理費',
+            guarantee_fee: '保證費'
+        };
+
+        async function loadData() {
+            try {
+                const response = await fetch('mpf_funds_data.json');
+                allFunds = await response.json();
+                console.log(`Loaded ${allFunds.length} funds`);
+                updateView();
+            } catch (error) {
+                console.error('Failed to load data:', error);
+                document.querySelector('#ranking-list').innerHTML = '<div class="no-data">無法載入資料</div>';
+            }
+        }
+
+        function getFilteredFunds() {
+            let pool = allFunds;
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase();
+                pool = allFunds.filter(f =>
+                    (f.fund_name_tc || '').toLowerCase().includes(q) ||
+                    (f.scheme_name_tc || '').toLowerCase().includes(q) ||
+                    (f.trustee || '').toLowerCase().includes(q)
+                );
+            }
+            return pool.filter(f => {
+                const cr = f.cumulative_return;
+                if (!cr) return false;
+                const val = cr[currentPeriod];
+                return val !== null && val !== undefined;
+            }).sort((a, b) => {
+                const aVal = a.cumulative_return[currentPeriod] || -999;
+                const bVal = b.cumulative_return[currentPeriod] || -999;
+                return bVal - aVal;
+            }).slice(0, 10);
+        }
+
+        function updateChart() {
+            const funds = getFilteredFunds();
+            const ctx = document.getElementById('lineChart').getContext('2d');
+            if (chart) chart.destroy();
+            if (funds.length === 0) {
+                document.querySelector('#ranking-list').innerHTML = '<div class="no-data">沒有符合條件的基金</div>';
+                return;
+            }
+            let labels = ['2021', '2022', '2023', '2024', '2025'];
+            const datasets = [];
+            funds.forEach((fund, idx) => {
+                const color = COLORS[idx % COLORS.length];
+                let data = [];
+                if (fund.calendar_year_return) {
+                    let cumulative = 0;
+                    for (const y of labels) {
+                        const r = fund.calendar_year_return[y];
+                        if (r !== null && r !== undefined) { cumulative += r; data.push(cumulative); }
+                        else { data.push(null); }
+                    }
+                }
+                datasets.push({
+                    label: `${fund.fund_name_tc} (${fund.scheme_name_tc})`,
+                    data: data,
+                    borderColor: color, backgroundColor: color + '20',
+                    borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7,
+                    pointBackgroundColor: color, tension: 0.3, fill: false,
+                    fundData: fund, colorIndex: idx
+                });
+            });
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#8b8f9a', font: { size: 11 }, boxWidth: 12, padding: 10, usePointStyle: true, pointStyle: 'circle' }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1a1d27', borderColor: '#2a2e3a', borderWidth: 1,
+                            titleColor: '#e4e6eb', bodyColor: '#e4e6eb', padding: 12,
+                            callbacks: {
+                                label: function(ctx) {
+                                    const val = ctx.parsed.y;
+                                    if (val === null) return `${ctx.dataset.label}: N/A`;
+                                    return `${ctx.dataset.label}: ${val.toFixed(2)}%`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { color: '#2a2e3a' }, ticks: { color: '#8b8f9a', font: { size: 12 } } },
+                        y: {
+                            grid: { color: '#2a2e3a' },
+                            ticks: { color: '#8b8f9a', font: { size: 12 }, callback: function(val) { return val + '%'; } },
+                            title: { display: true, text: '累積回報 (%)', color: '#8b8f9a', font: { size: 13 } }
+                        }
+                    },
+                    onClick: function(event, elements) {
+                        if (elements.length > 0) {
+                            const dataset = chart.data.datasets[elements[0].datasetIndex];
+                            showFundDetail(dataset.fundData, dataset.colorIndex);
+                        }
+                    },
+                    onHover: function(event, elements) {
+                        event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                    }
+                }
+            });
+            updateRankingList(funds);
+        }
+
+        function updateRankingList(funds) {
+            const container = document.getElementById('ranking-list');
+            container.innerHTML = '';
+            funds.forEach((fund, idx) => {
+                const val = fund.cumulative_return[currentPeriod];
+                const color = COLORS[idx % COLORS.length];
+                const item = document.createElement('div');
+                item.className = 'ranking-item';
+                item.innerHTML = `
+                    <div class="color-dot" style="background: ${color}"></div>
+                    <div class="rank-number ${idx === 0 ? 'top1' : idx === 1 ? 'top2' : idx === 2 ? 'top3' : ''}">${idx + 1}</div>
+                    <div class="rank-info">
+                        <div class="rank-fund-name">${fund.fund_name_tc || ''}</div>
+                        <div class="rank-scheme-name">${fund.scheme_name_tc || ''}</div>
+                        <div class="rank-trustee">受託人：${fund.trustee || ''}</div>
+                    </div>
+                    <div class="rank-value ${val >= 0 ? 'positive' : 'negative'}">${val !== null ? val.toFixed(2) + '%' : 'N/A'}</div>
+                `;
+                item.addEventListener('click', () => showFundDetail(fund, idx));
+                container.appendChild(item);
+            });
+        }
+
+        function showFundDetail(fund, colorIdx) {
+            const modal = document.getElementById('modal-content');
+            const cr = fund.cumulative_return || {};
+            const cyr = fund.calendar_year_return || {};
+            const fees = fund.fees || {};
+
+            const periods = [
+                { key: '1y', label: '1年' }, { key: '5y', label: '5年' },
+                { key: '10y', label: '10年' }, { key: 'since_launch', label: '成立至今' }
+            ];
+            const perfCards = periods.map(p => {
+                const val = cr[p.key];
+                let cls = 'na', display = 'N/A';
+                if (val !== null && val !== undefined) { display = val.toFixed(2) + '%'; cls = val >= 0 ? 'positive' : 'negative'; }
+                return `<div class="perf-card"><div class="label">${p.label}</div><div class="value ${cls}">${display}</div></div>`;
+            }).join('');
+
+            const calYears = ['2021', '2022', '2023', '2024', '2025'];
+            const calCards = calYears.map(y => {
+                const val = cyr[y];
+                let cls = 'na', display = 'N/A';
+                if (val !== null && val !== undefined) { display = val.toFixed(2) + '%'; cls = val >= 0 ? 'positive' : 'negative'; }
+                return `<div class="perf-card"><div class="label">${y}</div><div class="value ${cls}">${display}</div></div>`;
+            }).join('');
+
+            // Fee breakdown cards
+            const feeCards = Object.entries(FEE_LABELS).map(([key, label]) => {
+                const val = fees[key];
+                let display = 'N/A', cls = '';
+                if (val !== null && val !== undefined) {
+                    display = val.toFixed(4) + '%';
+                    cls = val === 0 ? 'zero' : '';
+                }
+                return `<div class="fee-card"><div class="label">${label}</div><div class="value ${cls}">${display}</div></div>`;
+            }).join('');
+
+            // Fund facts
+            let factsHtml = '';
+            if (fund.fund_category) factsHtml += `<div class="detail-row"><span class="label">基金類別</span><span class="value">${fund.fund_category}</span></div>`;
+            if (fund.launch_date) factsHtml += `<div class="detail-row"><span class="label">推出日期</span><span class="value">${fund.launch_date}</span></div>`;
+            if (fund.fund_size_million) factsHtml += `<div class="detail-row"><span class="label">基金規模</span><span class="value">HK$${fund.fund_size_million} 百萬</span></div>`;
+            if (fund.risk_level) factsHtml += `<div class="detail-row"><span class="label">風險級別</span><span class="value">${fund.risk_level} (1=低, 7=高)</span></div>`;
+            if (fund.fund_expense_ratio !== null && fund.fund_expense_ratio !== undefined) factsHtml += `<div class="detail-row"><span class="label">基金開支比率</span><span class="value">${fund.fund_expense_ratio.toFixed(5)}%</span></div>`;
+
+            modal.innerHTML = `
+                <div class="modal-header">
+                    <div>
+                        <h2>${fund.fund_name_tc || ''}</h2>
+                        <div class="scheme">${fund.scheme_name_tc || ''}</div>
+                        <div class="trustee">受託人：${fund.trustee || ''}</div>
+                    </div>
+                    <button class="modal-close" onclick="document.getElementById('modal-overlay').classList.remove('active')">&times;</button>
+                </div>
+                <div class="modal-section">
+                    <h3>累積回報</h3>
+                    <div class="perf-grid">${perfCards}</div>
+                </div>
+                <div class="modal-section">
+                    <h3>曆年回報</h3>
+                    <div class="perf-grid">${calCards}</div>
+                </div>
+                ${factsHtml ? `<div class="modal-section"><h3>基金資料</h3>${factsHtml}</div>` : ''}
+                <div class="modal-section">
+                    <h3>費用及收費明細</h3>
+                    <div class="fee-grid">${feeCards}</div>
+                </div>
+            `;
+            document.getElementById('modal-overlay').classList.add('active');
+        }
+
+        function updateView() {
+            document.getElementById('chart-title').textContent = `累積回報 Top 10 — ${PERIOD_LABELS[currentPeriod]}`;
+            updateChart();
+        }
+
+        document.querySelectorAll('.period-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentPeriod = btn.dataset.period;
+                updateView();
+            });
+        });
+        document.getElementById('search-box').addEventListener('input', (e) => { searchQuery = e.target.value; updateView(); });
+        document.getElementById('modal-overlay').addEventListener('click', (e) => { if (e.target.id === 'modal-overlay') e.target.classList.remove('active'); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.getElementById('modal-overlay').classList.remove('active'); });
+        loadData();
+    </script>
+</body>
+</html>
